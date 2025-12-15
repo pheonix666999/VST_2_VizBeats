@@ -52,12 +52,35 @@ public:
 
 private:
   void updateHostInfo();
+  void resetClick();
+  void triggerClick();
+  void renderClick(juce::AudioBuffer<float>& buffer);
+  bool computeBeatPhase(double& outPhase, bool& outRunning, double manualBpm, bool internalPlay, int numSamples);
 
   std::atomic<bool> hostIsPlaying { false };
   std::atomic<bool> hostHasBpm { false };
   std::atomic<double> hostBpm { 120.0 };
   std::atomic<bool> hostHasPpqPosition { false };
   std::atomic<double> hostPpqPosition { 0.0 };
+
+  double sampleRateHz = 44100.0;
+  double internalPhaseSamples = 0.0;
+  double internalSamplesPerBeat = 44100.0;
+  double hostSamplesPerBeat = 0.0;
+  double hostLastSamplePos = 0.0;
+
+  double lastBeatPhase = 0.0;
+  bool lastBeatPhaseValid = false;
+  bool lastRunning = false;
+
+  int clickSamplesLeft = 0;
+  int clickLengthSamples = 1764; // ~40 ms at 44.1k
+  float clickGain = 0.45f;
+  double clickPhase = 0.0;
+  double clickPhaseDelta = 0.0;
+  double clickFreqStart = 2200.0;
+  double clickFreqEnd = 800.0;
+  juce::Random rand;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VizBeatsAudioProcessor)
 };

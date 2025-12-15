@@ -1,4 +1,5 @@
 #include <JuceHeader.h>
+#include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginProcessor.h"
 
@@ -14,6 +15,11 @@ public:
     setUsingNativeTitleBar(true);
     setResizable(true, true);
 
+    // Audio hookup: auto-select default output so the click is audible.
+    deviceManager.initialiseWithDefaultDevices(0, 2);
+    player.setProcessor(&audioProcessor);
+    deviceManager.addAudioCallback(&player);
+
     setContentOwned(audioProcessor.createEditor(), true);
     centreWithSize(getWidth(), getHeight());
     setVisible(true);
@@ -26,6 +32,8 @@ public:
 
 private:
   VizBeatsAudioProcessor& audioProcessor;
+  juce::AudioDeviceManager deviceManager;
+  juce::AudioProcessorPlayer player;
 };
 } // namespace
 

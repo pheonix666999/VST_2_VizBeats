@@ -71,6 +71,7 @@ target_compile_definitions(VizBeats PUBLIC
 
 target_link_libraries(VizBeats PRIVATE
   juce::juce_audio_processors
+  juce::juce_audio_devices
   juce::juce_gui_basics
   juce::juce_gui_extra
   juce::juce_recommended_config_flags
@@ -99,6 +100,8 @@ target_compile_definitions(VizBeatsStandalone PRIVATE
 
 target_link_libraries(VizBeatsStandalone PRIVATE
   juce::juce_audio_processors
+  juce::juce_audio_devices
+  juce::juce_audio_utils
   juce::juce_gui_basics
   juce::juce_gui_extra
   juce::juce_recommended_config_flags

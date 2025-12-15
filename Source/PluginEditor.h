@@ -26,6 +26,8 @@ private:
 
   bool lastInternalPlayState = false;
   double internalStartTimeSeconds = 0.0;
+  float lastBeatPhaseUi = 0.0f;
+  bool lastUiRunning = false;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VizBeatsAudioProcessorEditor)
 };

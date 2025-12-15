@@ -8,11 +8,12 @@ namespace
 constexpr auto kManualBpmParamId = "manualBpm";
 constexpr auto kInternalPlayParamId = "internalPlay";
 
-const juce::Colour kBackgroundTop { 0xff0a1426 };
-const juce::Colour kBackgroundBottom { 0xff050b16 };
+const juce::Colour kBackgroundTop { 0xff0b1323 };
+const juce::Colour kBackgroundBottom { 0xff0b1323 };
 const juce::Colour kAccentBlue { 0xff32b7ff };
-const juce::Colour kAccentBlue2 { 0xff1aa2ff };
+const juce::Colour kAccentBlue2 { 0xff2da5ff };
 const juce::Colour kTextMuted { 0xff9aa8bd };
+const juce::Colour kInnerRing { 0x442c3649 };
 
 static juce::Path makeGearPath()
 {
@@ -188,13 +189,12 @@ class VizBeatsAudioProcessorEditor::PulseVisualizer final : public juce::Compone
 public:
   void setPulse(float newPulse)
   {
-    pulse = clamp01(newPulse);
+    const float target = clamp01(newPulse);
+    constexpr float smoothing = 0.10f;
+    smoothedPulse = smoothedPulse * (1.0f - smoothing) + target * smoothing;
   }
 
-  void setRunning(bool shouldRun)
-  {
-    running = shouldRun;
-  }
+  void setRunning(bool shouldRun) { running = shouldRun; }
 
   void paint(juce::Graphics& g) override
   {
@@ -202,35 +202,42 @@ public:
     const auto size = juce::jmin(bounds.getWidth(), bounds.getHeight());
     const auto centre = bounds.getCentre();
 
-    if (!running)
-      return;
+    const auto maxRadius = size * 0.60f;
+    const auto minRadius = size * 0.10f;
 
-    const auto baseRadius = size * 0.34f;
-    const auto expansion = baseRadius * (0.07f * pulse);
-    const auto radius = baseRadius + expansion;
+    const auto decay = (running ? smoothedPulse : 0.0f);
+    const auto radius = minRadius + (maxRadius - minRadius) * decay;
 
-    const auto alpha = 0.30f + 0.55f * pulse;
-    const auto stroke = baseRadius * (0.018f + 0.010f * pulse);
+    const auto alpha = 0.14f + 0.82f * decay;
+    const auto stroke = juce::jlimit(1.4f, 9.5f, maxRadius * (0.010f + 0.024f * decay));
 
     const auto ringBounds = juce::Rectangle<float>(radius * 2.0f, radius * 2.0f).withCentre(centre);
 
-    g.setColour(kAccentBlue.withAlpha(alpha * 0.25f));
-    g.drawEllipse(ringBounds, stroke * 2.6f);
+    g.setColour(kAccentBlue.withAlpha(alpha * 0.42f));
+    g.fillEllipse(ringBounds);
 
-    g.setColour(kAccentBlue.withAlpha(alpha));
-    g.drawEllipse(ringBounds, stroke);
+    g.setColour(kAccentBlue.withAlpha(alpha * 0.78f));
+    g.drawEllipse(ringBounds, stroke * 1.05f);
 
-    const auto innerRadius = size * 0.085f;
-    const auto innerBounds = juce::Rectangle<float>(innerRadius * 2.0f, innerRadius * 2.0f).withCentre(centre);
+    // soft glow behind the core
+    const auto glowRadius = size * 0.11f;
+    auto glowBounds = juce::Rectangle<float>(glowRadius * 2.0f, glowRadius * 2.0f).withCentre(centre);
+    juce::ColourGradient glow(kAccentBlue.withAlpha(0.28f * decay), centre, kAccentBlue.withAlpha(0.0f), glowBounds.getBottomRight(), true);
+    g.setGradientFill(glow);
+    g.fillEllipse(glowBounds);
 
-    g.setColour(kAccentBlue2.withAlpha(0.95f));
-    g.drawEllipse(innerBounds, stroke * 0.85f);
+    const auto coreRadius = size * 0.085f;
+    const auto coreBounds = juce::Rectangle<float>(coreRadius * 2.0f, coreRadius * 2.0f).withCentre(centre);
 
-    const auto dotRadius = juce::jmax(2.0f, size * 0.010f);
+    g.setColour(kAccentBlue2.withAlpha(0.97f));
+    g.drawEllipse(coreBounds, stroke * 0.65f);
+
+    const auto dotRadius = juce::jmax(2.6f, size * 0.011f);
     g.fillEllipse(juce::Rectangle<float>(dotRadius * 2.0f, dotRadius * 2.0f).withCentre(centre));
   }
 
 private:
+  float smoothedPulse = 1.0f;
   float pulse = 0.0f;
   bool running = false;
 };
@@ -417,53 +424,13 @@ VizBeatsAudioProcessorEditor::~VizBeatsAudioProcessorEditor()
 void VizBeatsAudioProcessorEditor::paint(juce::Graphics& g)
 {
   auto bounds = getLocalBounds().toFloat();
-  juce::ColourGradient bgGrad(kBackgroundTop, bounds.getTopLeft(), kBackgroundBottom, bounds.getBottomRight(), false);
-  g.setGradientFill(bgGrad);
-  g.fillAll();
-
-  const auto glowCentre = bounds.getCentre().translated(0.0f, -bounds.getHeight() * 0.05f);
-  const auto glowRadius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.45f;
-  juce::ColourGradient glow(
-      kAccentBlue.withAlpha(0.18f),
-      glowCentre,
-      kBackgroundTop.withAlpha(0.0f),
-      glowCentre.translated(glowRadius, 0.0f),
-      true);
-  g.setGradientFill(glow);
-  g.fillEllipse(juce::Rectangle<float>(glowRadius * 2.0f, glowRadius * 2.0f).withCentre(glowCentre));
+  g.setColour(kBackgroundTop);
+  g.fillRect(bounds);
 
   if (transportBar != nullptr)
   {
     const juce::DropShadow shadow(juce::Colours::black.withAlpha(0.35f), 18, { 0, 8 });
     shadow.drawForRectangle(g, transportBar->getBounds());
-  }
-
-  // Header
-  auto headerArea = getLocalBounds().removeFromTop(70).reduced(26, 12);
-  auto titleRow = headerArea.removeFromTop(30);
-
-  g.setFont(juce::Font(26.0f, juce::Font::bold));
-  const auto vizWidth = g.getCurrentFont().getStringWidth("Viz");
-  g.setColour(juce::Colours::white.withAlpha(0.9f));
-  g.drawText("Viz", titleRow.removeFromLeft(vizWidth + 2), juce::Justification::left);
-  g.setColour(kAccentBlue.withAlpha(0.95f));
-  g.drawText("Beats", titleRow, juce::Justification::left);
-
-  auto subtitleRow = headerArea.removeFromTop(16);
-  g.setFont(juce::Font(12.0f, juce::Font::plain));
-  g.setColour(kTextMuted.withAlpha(0.9f));
-  g.drawText("VISUAL METRONOME", subtitleRow, juce::Justification::left);
-
-  // Idle text
-  const auto hostInfo = processor.getHostInfo();
-  const auto internalPlay = processor.apvts.getRawParameterValue(kInternalPlayParamId)->load() > 0.5f;
-  const auto isRunning = hostInfo.isPlaying || internalPlay;
-
-  if (!isRunning)
-  {
-    g.setColour(juce::Colours::white.withAlpha(0.72f));
-    g.setFont(juce::Font(14.0f, juce::Font::bold));
-    g.drawText("TAP PLAY TO START", getLocalBounds().withTrimmedBottom(120), juce::Justification::centred);
   }
 }
 
@@ -471,15 +438,15 @@ void VizBeatsAudioProcessorEditor::resized()
 {
   auto bounds = getLocalBounds();
 
-  const auto barHeight = 96;
-  const auto barWidth = juce::jmin(680, bounds.getWidth() - 40);
+  const auto barHeight = 92;
+  const auto barWidth = juce::jmin(700, bounds.getWidth() - 28);
   const auto barX = (bounds.getWidth() - barWidth) / 2;
-  const auto barY = bounds.getBottom() - barHeight - 26;
+  const auto barY = bounds.getBottom() - barHeight - 18;
 
   if (transportBar != nullptr)
     transportBar->setBounds(barX, barY, barWidth, barHeight);
 
-  auto vizBounds = bounds.withTrimmedTop(70).withTrimmedBottom(barHeight + 56).reduced(40);
+  auto vizBounds = bounds.withTrimmedTop(24).withTrimmedBottom(barHeight + 42).reduced(28);
   if (visualizer != nullptr)
     visualizer->setBounds(vizBounds);
 }
@@ -524,8 +491,20 @@ void VizBeatsAudioProcessorEditor::timerCallback()
     beatPhase = beats - std::floor(beats);
   }
 
+  bool beatWrapped = false;
+  if (isRunning)
+  {
+    beatWrapped = lastUiRunning && (beatPhase < lastBeatPhaseUi);
+    lastBeatPhaseUi = static_cast<float>(beatPhase);
+  }
+  else
+  {
+    lastBeatPhaseUi = 0.0f;
+  }
+  lastUiRunning = isRunning;
+
   visualizer->setRunning(isRunning);
-  visualizer->setPulse(isRunning ? pulseFromBeatPhase(beatPhase) : 0.0f);
+  visualizer->setPulse(isRunning ? (beatWrapped ? 1.0f : pulseFromBeatPhase(beatPhase)) : 0.0f);
   visualizer->repaint();
   transportBar->repaint();
 }
