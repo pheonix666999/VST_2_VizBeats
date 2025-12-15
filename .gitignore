@@ -1,0 +1,15 @@
+# Build
+/build*/
+/cmake-build-*/
+/.cache/
+
+# IDEs
+/.idea/
+/.vscode/
+/*.sln
+/*.vcxproj*
+/*.xcodeproj
+
+# macOS
+.DS_Store
+
