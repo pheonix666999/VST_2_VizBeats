@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake:*)",
+      "Bash(start \"\" \"h:\\PROJECTS\\Fiverr\\VST 2\\build\\VizBeatsStandalone_artefacts\\Release\\VizBeatsStandalone.exe\")",
+      "Bash(if not exist \"H:\\BUILDS\" mkdir \"H:\\BUILDS\")",
+      "Bash(start \"\" \"H:\\BUILDS\\VizBeatsStandalone_artefacts\\Release\\VizBeatsStandalone.exe\")",
+      "Bash(dir /s \"h:\\\\PROJECTS\\\\Fiverr\\\\VST 2\")",
+      "Bash(dir:*)",
+      "Bash(git -C \"h:\\\\PROJECTS\\\\Fiverr\\\\VST 2\" log --oneline)",
+      "Bash(start:*)",
+      "Bash(taskkill:*)"
+    ]
+  }
+}

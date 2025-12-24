@@ -2,6 +2,26 @@
 
 #include <JuceHeader.h>
 
+// Visual mode enumeration
+enum class VisualMode
+{
+  Pulse = 0,
+  Traffic,
+  Pendulum,
+  Bounce,
+  Ladder,
+  Pattern
+};
+
+// Color theme enumeration
+enum class ColorTheme
+{
+  CalmBlue = 0,
+  WarmSunset,
+  ForestMint,
+  HighContrast
+};
+
 class VizBeatsAudioProcessor final : public juce::AudioProcessor
 {
 public:
@@ -46,6 +66,14 @@ public:
   HostInfo getHostInfo() const noexcept;
   void refreshHostInfo();
 
+  // Helper methods to get settings
+  VisualMode getVisualMode() const;
+  ColorTheme getColorTheme() const;
+  int getBeatsPerBar() const;
+  int getSubdivisions() const;
+  float getSoundVolume() const;
+  bool getPreviewSubdivisions() const;
+
   juce::AudioProcessorValueTreeState apvts;
 
   static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -53,7 +81,8 @@ public:
 private:
   void updateHostInfo();
   void resetClick();
-  void triggerClick();
+  void triggerClick(bool accent);
+  void triggerSubdivisionClick();
   void renderClick(juce::AudioBuffer<float>& buffer);
   bool computeBeatPhase(double& outPhase, bool& outRunning, double manualBpm, bool internalPlay, int numSamples);
 
@@ -69,18 +98,32 @@ private:
   double hostSamplesPerBeat = 0.0;
   double hostLastSamplePos = 0.0;
 
-  double lastBeatPhase = 0.0;
-  bool lastBeatPhaseValid = false;
-  bool lastRunning = false;
+	  double lastBeatPhase = 0.0;
+	  bool lastBeatPhaseValid = false;
+	  bool lastRunning = false;
+	  double lastBarProgress01 = 0.0;
+	  bool lastBarProgressValid = false;
+	  int lastBeatsPerBarForProgress = 0;
 
   int clickSamplesLeft = 0;
   int clickLengthSamples = 1764; // ~40 ms at 44.1k
   float clickGain = 0.45f;
+  float clickGainCurrent = 0.45f;
   double clickPhase = 0.0;
   double clickPhaseDelta = 0.0;
   double clickFreqStart = 2200.0;
   double clickFreqEnd = 800.0;
+  double clickFreqStartCurrent = 2200.0;
+  double clickFreqEndCurrent = 800.0;
   juce::Random rand;
+
+  double lastClickBpm = 120.0;
+  bool lastInternalPlay = false;
+  int64_t internalBeatCounter = 0;
+
+  // Subdivision tracking
+  double lastSubdivPhase = 0.0;
+  bool lastSubdivPhaseValid = false;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VizBeatsAudioProcessor)
 };

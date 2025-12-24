@@ -7,6 +7,12 @@ namespace
 {
 constexpr auto kManualBpmParamId = "manualBpm";
 constexpr auto kInternalPlayParamId = "internalPlay";
+constexpr auto kVisualModeParamId = "visualMode";
+constexpr auto kColorThemeParamId = "colorTheme";
+constexpr auto kBeatsPerBarParamId = "beatsPerBar";
+constexpr auto kSubdivisionsParamId = "subdivisions";
+constexpr auto kSoundVolumeParamId = "soundVolume";
+constexpr auto kPreviewSubdivisionsParamId = "previewSubdivisions";
 }
 
 VizBeatsAudioProcessor::VizBeatsAudioProcessor()
@@ -30,7 +36,80 @@ juce::AudioProcessorValueTreeState::ParameterLayout VizBeatsAudioProcessor::crea
   params.push_back(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID { kInternalPlayParamId, 1 }, "Internal Play", false));
 
+  // Visual mode: 0=Pulse, 1=Traffic, 2=Pendulum, 3=Bounce, 4=Ladder, 5=Pattern
+  params.push_back(std::make_unique<juce::AudioParameterInt>(
+      juce::ParameterID { kVisualModeParamId, 1 },
+      "Visual Mode",
+      0, 5, 1));
+
+  // Color theme: 0=CalmBlue, 1=WarmSunset, 2=ForestMint, 3=HighContrast
+  params.push_back(std::make_unique<juce::AudioParameterInt>(
+      juce::ParameterID { kColorThemeParamId, 1 },
+      "Color Theme",
+      0, 3, 3)); // Default to High Contrast
+
+  // Beats per bar: 1-16
+  params.push_back(std::make_unique<juce::AudioParameterInt>(
+      juce::ParameterID { kBeatsPerBarParamId, 1 },
+      "Beats Per Bar",
+      1, 16, 4));
+
+  // Subdivisions: 1=1x, 2=2x, 3=3x, 4=4x
+  params.push_back(std::make_unique<juce::AudioParameterInt>(
+      juce::ParameterID { kSubdivisionsParamId, 1 },
+      "Subdivisions",
+      1, 4, 1));
+
+  // Sound volume: 0.0 to 1.0
+  params.push_back(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID { kSoundVolumeParamId, 1 },
+      "Sound Volume",
+      juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f),
+      0.5f));
+
+  // Preview subdivisions: whether to click on subdivision markers
+  params.push_back(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID { kPreviewSubdivisionsParamId, 1 },
+      "Preview Subdivisions",
+      false));
+
   return { params.begin(), params.end() };
+}
+
+VisualMode VizBeatsAudioProcessor::getVisualMode() const
+{
+  auto* param = apvts.getRawParameterValue(kVisualModeParamId);
+  return static_cast<VisualMode>(static_cast<int>(param->load()));
+}
+
+ColorTheme VizBeatsAudioProcessor::getColorTheme() const
+{
+  auto* param = apvts.getRawParameterValue(kColorThemeParamId);
+  return static_cast<ColorTheme>(static_cast<int>(param->load()));
+}
+
+int VizBeatsAudioProcessor::getBeatsPerBar() const
+{
+  auto* param = apvts.getRawParameterValue(kBeatsPerBarParamId);
+  return static_cast<int>(param->load());
+}
+
+int VizBeatsAudioProcessor::getSubdivisions() const
+{
+  auto* param = apvts.getRawParameterValue(kSubdivisionsParamId);
+  return static_cast<int>(param->load());
+}
+
+float VizBeatsAudioProcessor::getSoundVolume() const
+{
+  auto* param = apvts.getRawParameterValue(kSoundVolumeParamId);
+  return param->load();
+}
+
+bool VizBeatsAudioProcessor::getPreviewSubdivisions() const
+{
+  auto* param = apvts.getRawParameterValue(kPreviewSubdivisionsParamId);
+  return param->load() > 0.5f;
 }
 
 const juce::String VizBeatsAudioProcessor::getName() const
@@ -174,6 +253,11 @@ void VizBeatsAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
   const auto manualBpm = static_cast<double>(apvts.getRawParameterValue(kManualBpmParamId)->load());
   const auto internalPlay = apvts.getRawParameterValue(kInternalPlayParamId)->load() > 0.5f;
+  const auto beatsPerBar = getBeatsPerBar();
+  const auto subdivisions = getSubdivisions();
+  const auto previewSubdivisions = getPreviewSubdivisions();
+  const auto hostInfo = getHostInfo();
+  const bool useInternalClock = internalPlay && !hostInfo.isPlaying;
 
   double beatPhase = 0.0;
   bool isRunning = false;
@@ -182,9 +266,61 @@ void VizBeatsAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
   if (isRunning && hasPhase)
   {
-    const bool wrapped = !lastBeatPhaseValid || (beatPhase < lastBeatPhase);
-    if (!lastRunning || wrapped)
-      triggerClick();
+    const bool phaseWrapped = lastBeatPhaseValid && (beatPhase < lastBeatPhase);
+    const bool shouldClick = !lastRunning || !lastBeatPhaseValid || phaseWrapped;
+    bool barWrapped = false;
+
+    // Different sound only when the ball reaches the right bar (bar wrap).
+    if (useInternalClock)
+    {
+      lastBarProgressValid = false;
+      lastBeatsPerBarForProgress = beatsPerBar;
+
+      if (!lastInternalPlay)
+        internalBeatCounter = 0;
+
+      if (phaseWrapped)
+        ++internalBeatCounter;
+
+      lastInternalPlay = true;
+
+      if (phaseWrapped && beatsPerBar > 0)
+        barWrapped = (internalBeatCounter % static_cast<int64_t>(beatsPerBar) == 0);
+    }
+    else
+    {
+      lastInternalPlay = false;
+      internalBeatCounter = 0;
+
+      if (hostInfo.isPlaying && hostInfo.hasPpqPosition && beatsPerBar > 0)
+      {
+        if (lastBeatsPerBarForProgress != beatsPerBar)
+        {
+          lastBeatsPerBarForProgress = beatsPerBar;
+          lastBarProgressValid = false;
+        }
+
+        const auto barBeats = static_cast<double>(beatsPerBar);
+        auto inBar = std::fmod(hostInfo.ppqPosition, barBeats);
+        if (inBar < 0.0)
+          inBar += barBeats;
+        const auto barProgress01 = inBar / barBeats;
+
+        if (lastBarProgressValid)
+          barWrapped = (barProgress01 + 0.15 < lastBarProgress01);
+
+        lastBarProgress01 = barProgress01;
+        lastBarProgressValid = true;
+      }
+      else
+      {
+        lastBeatsPerBarForProgress = beatsPerBar;
+        lastBarProgressValid = false;
+      }
+    }
+
+    if (shouldClick)
+      triggerClick(phaseWrapped && barWrapped);
 
     lastBeatPhase = beatPhase;
     lastBeatPhaseValid = true;
@@ -192,6 +328,10 @@ void VizBeatsAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
   else
   {
     lastBeatPhaseValid = false;
+    lastBarProgressValid = false;
+    lastInternalPlay = false;
+    internalBeatCounter = 0;
+    lastSubdivPhaseValid = false;
   }
 
   lastRunning = isRunning;
@@ -276,13 +416,43 @@ void VizBeatsAudioProcessor::resetClick()
   clickSamplesLeft = 0;
   lastBeatPhaseValid = false;
   lastRunning = false;
+  lastBarProgressValid = false;
+  lastBarProgress01 = 0.0;
+  lastBeatsPerBarForProgress = 0;
   internalPhaseSamples = 0.0;
+  internalBeatCounter = 0;
+  lastInternalPlay = false;
+  lastSubdivPhaseValid = false;
+  lastSubdivPhase = 0.0;
 }
 
-void VizBeatsAudioProcessor::triggerClick()
+void VizBeatsAudioProcessor::triggerClick(bool accent)
 {
   clickSamplesLeft = clickLengthSamples;
   clickPhase = 0.0;
+
+  if (accent)
+  {
+    clickGainCurrent = 0.60f;
+    clickFreqStartCurrent = 2800.0;
+    clickFreqEndCurrent = 1100.0;
+  }
+  else
+  {
+    clickGainCurrent = clickGain;
+    clickFreqStartCurrent = clickFreqStart;
+    clickFreqEndCurrent = clickFreqEnd;
+  }
+}
+
+void VizBeatsAudioProcessor::triggerSubdivisionClick()
+{
+  // Softer, higher-pitched click for subdivisions
+  clickSamplesLeft = static_cast<int>(clickLengthSamples * 0.6); // Shorter click
+  clickPhase = 0.0;
+  clickGainCurrent = clickGain * 0.35f; // Much softer
+  clickFreqStartCurrent = 3200.0; // Higher pitch
+  clickFreqEndCurrent = 1800.0;
 }
 
 void VizBeatsAudioProcessor::renderClick(juce::AudioBuffer<float>& buffer)
@@ -292,6 +462,7 @@ void VizBeatsAudioProcessor::renderClick(juce::AudioBuffer<float>& buffer)
 
   const auto numSamples = buffer.getNumSamples();
   const auto numCh = buffer.getNumChannels();
+  const auto volume = getSoundVolume();
 
   for (int i = 0; i < numSamples; ++i)
   {
@@ -299,12 +470,12 @@ void VizBeatsAudioProcessor::renderClick(juce::AudioBuffer<float>& buffer)
       break;
 
     const auto t = 1.0 - static_cast<double>(clickSamplesLeft) / static_cast<double>(clickLengthSamples);
-    const auto freq = clickFreqStart + (clickFreqEnd - clickFreqStart) * t;
+    const auto freq = clickFreqStartCurrent + (clickFreqEndCurrent - clickFreqStartCurrent) * t;
     clickPhaseDelta = juce::MathConstants<double>::twoPi * freq / sampleRateHz;
 
     const auto env = static_cast<float>(std::exp(-5.0 * t));
     const auto tone = static_cast<float>(std::sin(clickPhase));
-    const auto sample = clickGain * env * tone;
+    const auto sample = clickGainCurrent * volume * env * tone;
     clickPhase += clickPhaseDelta;
 
     for (int ch = 0; ch < numCh; ++ch)

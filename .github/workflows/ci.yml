@@ -1,39 +1,133 @@
-name: Build
+name: Build All Platforms
 
 on:
   push:
+    branches: [main, master]
+    tags:
+      - 'v*'
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    name: Windows (VST3, Standalone)
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@v6
 
-      - name: Configure (Release)
+      - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
-        run: cmake --build build --parallel
+      - name: Build VST3
+        run: cmake --build build --target VizBeats_VST3 --parallel
 
-      - name: Upload build artefacts
+      - name: Build Standalone
+        run: cmake --build build --target VizBeatsStandalone --parallel
+
+      - name: Prepare Windows artifacts
+        run: |
+          mkdir -p artifacts/Windows
+          cp -r build/VizBeats_artefacts/Release/VST3/VizBeats.vst3 artifacts/Windows/
+          cp build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.exe artifacts/Windows/
+        shell: bash
+
+      - name: Upload Windows VST3
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-artefacts
-          path: |
-            build/*_artefacts/Release/**
+          name: VizBeats-Windows-VST3
+          path: artifacts/Windows/VizBeats.vst3
 
+      - name: Upload Windows Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-Windows-Standalone
+          path: artifacts/Windows/VizBeatsStandalone.exe
+
+  build-macos:
+    name: macOS (VST3, AU, Standalone)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --target VizBeats_VST3 --parallel
+
+      - name: Build AU
+        run: cmake --build build --target VizBeats_AU --parallel
+
+      - name: Build Standalone
+        run: cmake --build build --target VizBeatsStandalone --parallel
+
+      - name: Prepare macOS artifacts
+        run: |
+          mkdir -p artifacts/macOS
+          cp -r build/VizBeats_artefacts/Release/VST3/VizBeats.vst3 artifacts/macOS/
+          cp -r build/VizBeats_artefacts/Release/AU/VizBeats.component artifacts/macOS/
+          cp -r build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app artifacts/macOS/
+
+      - name: Upload macOS VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-macOS-VST3
+          path: artifacts/macOS/VizBeats.vst3
+
+      - name: Upload macOS AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-macOS-AU
+          path: artifacts/macOS/VizBeats.component
+
+      - name: Upload macOS Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-macOS-Standalone
+          path: artifacts/macOS/VizBeatsStandalone.app
+
+  # Create a release with all artifacts when a tag is pushed
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Windows ZIP
+        run: |
+          cd artifacts
+          zip -r VizBeats-Windows.zip VizBeats-Windows-VST3 VizBeats-Windows-Standalone
+
+      - name: Create macOS ZIP
+        run: |
+          cd artifacts
+          zip -r VizBeats-macOS.zip VizBeats-macOS-VST3 VizBeats-macOS-AU VizBeats-macOS-Standalone
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/VizBeats-Windows.zip
+            artifacts/VizBeats-macOS.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
