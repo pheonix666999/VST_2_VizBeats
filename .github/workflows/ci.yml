@@ -62,8 +62,8 @@ jobs:
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@v6
 
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Configure (Universal Binary)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 
       - name: Build VST3
         run: cmake --build build --target VizBeats_VST3 --parallel
@@ -74,32 +74,88 @@ jobs:
       - name: Build Standalone
         run: cmake --build build --target VizBeatsStandalone --parallel
 
-      - name: Prepare macOS artifacts
+      - name: Ad-hoc sign binaries
         run: |
-          mkdir -p artifacts/macOS
-          cp -r build/VizBeats_artefacts/Release/VST3/VizBeats.vst3 artifacts/macOS/
-          cp -r build/VizBeats_artefacts/Release/AU/VizBeats.component artifacts/macOS/
-          cp -r build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app artifacts/macOS/
+          codesign --force --deep --sign - build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app
+          codesign --force --deep --sign - build/VizBeats_artefacts/Release/VST3/VizBeats.vst3
+          codesign --force --deep --sign - build/VizBeats_artefacts/Release/AU/VizBeats.component
 
-      - name: Upload macOS VST3
-        uses: actions/upload-artifact@v4
-        with:
-          name: VizBeats-macOS-VST3
-          path: artifacts/macOS/VizBeats.vst3
+      - name: Create macOS packages with installer script
+        run: |
+          # Create directories
+          mkdir -p "artifacts/VizBeats-Standalone"
+          mkdir -p "artifacts/VizBeats-VST3"
+          mkdir -p "artifacts/VizBeats-AU"
 
-      - name: Upload macOS AU
-        uses: actions/upload-artifact@v4
-        with:
-          name: VizBeats-macOS-AU
-          path: artifacts/macOS/VizBeats.component
+          # Copy binaries
+          cp -r build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app "artifacts/VizBeats-Standalone/"
+          cp -r build/VizBeats_artefacts/Release/VST3/VizBeats.vst3 "artifacts/VizBeats-VST3/"
+          cp -r build/VizBeats_artefacts/Release/AU/VizBeats.component "artifacts/VizBeats-AU/"
 
-      - name: Upload macOS Standalone
+          # Create install script for Standalone
+          cat > "artifacts/VizBeats-Standalone/Install.command" << 'SCRIPT'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          echo "Installing VizBeats Standalone..."
+          xattr -cr VizBeatsStandalone.app
+          cp -r VizBeatsStandalone.app /Applications/
+          echo "Done! VizBeats has been installed to Applications."
+          echo "You can now open it from your Applications folder."
+          read -p "Press Enter to close..."
+          SCRIPT
+          chmod +x "artifacts/VizBeats-Standalone/Install.command"
+
+          # Create install script for VST3
+          cat > "artifacts/VizBeats-VST3/Install.command" << 'SCRIPT'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          echo "Installing VizBeats VST3..."
+          xattr -cr VizBeats.vst3
+          mkdir -p "/Library/Audio/Plug-Ins/VST3"
+          cp -r VizBeats.vst3 "/Library/Audio/Plug-Ins/VST3/"
+          echo "Done! VizBeats VST3 has been installed."
+          echo "Restart your DAW to see the plugin."
+          read -p "Press Enter to close..."
+          SCRIPT
+          chmod +x "artifacts/VizBeats-VST3/Install.command"
+
+          # Create install script for AU
+          cat > "artifacts/VizBeats-AU/Install.command" << 'SCRIPT'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          echo "Installing VizBeats Audio Unit..."
+          xattr -cr VizBeats.component
+          mkdir -p "/Library/Audio/Plug-Ins/Components"
+          cp -r VizBeats.component "/Library/Audio/Plug-Ins/Components/"
+          echo "Done! VizBeats AU has been installed."
+          echo "Restart your DAW to see the plugin."
+          read -p "Press Enter to close..."
+          SCRIPT
+          chmod +x "artifacts/VizBeats-AU/Install.command"
+
+          # Create DMGs
+          hdiutil create -volname "VizBeats Standalone" -srcfolder "artifacts/VizBeats-Standalone" -ov -format UDZO artifacts/VizBeats-macOS-Standalone.dmg
+          hdiutil create -volname "VizBeats VST3" -srcfolder "artifacts/VizBeats-VST3" -ov -format UDZO artifacts/VizBeats-macOS-VST3.dmg
+          hdiutil create -volname "VizBeats AU" -srcfolder "artifacts/VizBeats-AU" -ov -format UDZO artifacts/VizBeats-macOS-AU.dmg
+
+      - name: Upload macOS Standalone DMG
         uses: actions/upload-artifact@v4
         with:
           name: VizBeats-macOS-Standalone
-          path: artifacts/macOS/VizBeatsStandalone.app
+          path: artifacts/VizBeats-macOS-Standalone.dmg
 
-  # Create a release with all artifacts when a tag is pushed
+      - name: Upload macOS VST3 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-macOS-VST3
+          path: artifacts/VizBeats-macOS-VST3.dmg
+
+      - name: Upload macOS AU DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: VizBeats-macOS-AU
+          path: artifacts/VizBeats-macOS-AU.dmg
+
   release:
     name: Create Release
     needs: [build-windows, build-macos]
@@ -117,17 +173,38 @@ jobs:
           cd artifacts
           zip -r VizBeats-Windows.zip VizBeats-Windows-VST3 VizBeats-Windows-Standalone
 
-      - name: Create macOS ZIP
+      - name: Prepare release files
         run: |
-          cd artifacts
-          zip -r VizBeats-macOS.zip VizBeats-macOS-VST3 VizBeats-macOS-AU VizBeats-macOS-Standalone
+          mkdir release
+          cp artifacts/VizBeats-Windows.zip release/
+          cp artifacts/VizBeats-macOS-Standalone/VizBeats-macOS-Standalone.dmg release/
+          cp artifacts/VizBeats-macOS-VST3/VizBeats-macOS-VST3.dmg release/
+          cp artifacts/VizBeats-macOS-AU/VizBeats-macOS-AU.dmg release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/VizBeats-Windows.zip
-            artifacts/VizBeats-macOS.zip
+            release/VizBeats-Windows.zip
+            release/VizBeats-macOS-Standalone.dmg
+            release/VizBeats-macOS-VST3.dmg
+            release/VizBeats-macOS-AU.dmg
+          body: |
+            ## VizBeats Release
+
+            ### Windows
+            - **VizBeats-Windows.zip** - Extract and run `VizBeatsStandalone.exe` or copy `VizBeats.vst3` to your VST3 folder
+
+            ### macOS (Universal Binary - Intel + Apple Silicon)
+            - **VizBeats-macOS-Standalone.dmg** - Standalone application
+            - **VizBeats-macOS-VST3.dmg** - VST3 plugin
+            - **VizBeats-macOS-AU.dmg** - Audio Unit plugin
+
+            #### macOS Installation
+            1. Open the DMG file
+            2. Double-click `Install.command`
+            3. Enter your password when prompted
+            4. Done! The plugin/app is installed and ready to use
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
