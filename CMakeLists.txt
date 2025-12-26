@@ -43,15 +43,30 @@ endif()
 juce_add_plugin(VizBeats
   COMPANY_NAME "VizBeats"
   PRODUCT_NAME "VizBeats"
+  BUNDLE_ID "com.vizbeats.vizbeats"
   PLUGIN_MANUFACTURER_CODE VzBt
-  PLUGIN_CODE VzBt
+  PLUGIN_CODE Vzbp
   FORMATS ${VIZBEATS_PLUGIN_FORMATS}
+
+  # AU specific settings for Logic Pro compatibility
+  AU_MAIN_TYPE kAudioUnitType_Effect
+  AU_SANDBOX_SAFE TRUE
+
   IS_SYNTH FALSE
   NEEDS_MIDI_INPUT FALSE
   NEEDS_MIDI_OUTPUT FALSE
   IS_MIDI_EFFECT FALSE
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE
   COPY_PLUGIN_AFTER_BUILD FALSE
+
+  # Plugin description
+  DESCRIPTION "Visual metronome plugin with beat synchronization"
+
+  # macOS settings
+  HARDENED_RUNTIME_ENABLED TRUE
+  APP_SANDBOX_ENABLED FALSE
+  MICROPHONE_PERMISSION_ENABLED FALSE
+  CAMERA_PERMISSION_ENABLED FALSE
 )
 
 target_sources(VizBeats PRIVATE

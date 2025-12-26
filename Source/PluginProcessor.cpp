@@ -179,16 +179,18 @@ void VizBeatsAudioProcessor::releaseResources()
 
 bool VizBeatsAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-  const auto& mainIn = layouts.getMainInputChannelSet();
   const auto& mainOut = layouts.getMainOutputChannelSet();
 
-  if (mainIn.isDisabled() || mainOut.isDisabled())
+  // Output must be mono or stereo
+  if (mainOut != juce::AudioChannelSet::mono() && mainOut != juce::AudioChannelSet::stereo())
     return false;
 
-  if (mainIn != mainOut)
+  // Input can be disabled (for Logic Pro compatibility) or match output
+  const auto& mainIn = layouts.getMainInputChannelSet();
+  if (!mainIn.isDisabled() && mainIn != mainOut)
     return false;
 
-  return mainOut == juce::AudioChannelSet::mono() || mainOut == juce::AudioChannelSet::stereo();
+  return true;
 }
 
 void VizBeatsAudioProcessor::updateHostInfo()
