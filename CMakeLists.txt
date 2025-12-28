@@ -48,10 +48,6 @@ juce_add_plugin(VizBeats
   PLUGIN_CODE Vzbp
   FORMATS ${VIZBEATS_PLUGIN_FORMATS}
 
-  # AU specific settings for Logic Pro compatibility
-  AU_MAIN_TYPE kAudioUnitType_Effect
-  AU_SANDBOX_SAFE TRUE
-
   IS_SYNTH FALSE
   NEEDS_MIDI_INPUT FALSE
   NEEDS_MIDI_OUTPUT FALSE
@@ -61,12 +57,6 @@ juce_add_plugin(VizBeats
 
   # Plugin description
   DESCRIPTION "Visual metronome plugin with beat synchronization"
-
-  # macOS settings
-  HARDENED_RUNTIME_ENABLED TRUE
-  APP_SANDBOX_ENABLED FALSE
-  MICROPHONE_PERMISSION_ENABLED FALSE
-  CAMERA_PERMISSION_ENABLED FALSE
 )
 
 target_sources(VizBeats PRIVATE

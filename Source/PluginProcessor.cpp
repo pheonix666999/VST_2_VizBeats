@@ -179,18 +179,24 @@ void VizBeatsAudioProcessor::releaseResources()
 
 bool VizBeatsAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
+  const auto& mainIn = layouts.getMainInputChannelSet();
   const auto& mainOut = layouts.getMainOutputChannelSet();
 
-  // Output must be mono or stereo
+  // Must have output
+  if (mainOut.isDisabled())
+    return false;
+
+  // Accept mono or stereo output
   if (mainOut != juce::AudioChannelSet::mono() && mainOut != juce::AudioChannelSet::stereo())
     return false;
 
-  // Input can be disabled (for Logic Pro compatibility) or match output
-  const auto& mainIn = layouts.getMainInputChannelSet();
-  if (!mainIn.isDisabled() && mainIn != mainOut)
-    return false;
+  // Input can be:
+  // - Disabled (no input, we generate click only)
+  // - Same as output (pass-through with click overlay)
+  if (mainIn.isDisabled())
+    return true;
 
-  return true;
+  return mainIn == mainOut;
 }
 
 void VizBeatsAudioProcessor::updateHostInfo()
@@ -340,14 +346,28 @@ void VizBeatsAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
   const auto totalNumInputChannels = getTotalNumInputChannels();
   const auto totalNumOutputChannels = getTotalNumOutputChannels();
+  const auto numSamples = buffer.getNumSamples();
 
-  for (auto channel = totalNumInputChannels; channel < totalNumOutputChannels; ++channel)
-    buffer.clear(channel, 0, buffer.getNumSamples());
+  // If no input channels (generator mode), clear output first
+  if (totalNumInputChannels == 0)
+  {
+    for (auto channel = 0; channel < totalNumOutputChannels; ++channel)
+      buffer.clear(channel, 0, numSamples);
+  }
+  else
+  {
+    // Clear any extra output channels that don't have corresponding inputs
+    for (auto channel = totalNumInputChannels; channel < totalNumOutputChannels; ++channel)
+      buffer.clear(channel, 0, numSamples);
+  }
+
+  // Audio passes through unchanged (input already in buffer for in-place processing)
+  // We just add our click sound on top
 
   if (!isRunning)
     clickSamplesLeft = 0;
 
-  // mix click after clearing unused outputs so we don't wipe it out
+  // Mix click sound into the output
   if (isRunning)
     renderClick(buffer);
 }
