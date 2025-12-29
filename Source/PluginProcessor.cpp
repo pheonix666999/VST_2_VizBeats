@@ -162,8 +162,11 @@ void VizBeatsAudioProcessor::changeProgramName(int, const juce::String&)
 
 void VizBeatsAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-  sampleRateHz = sampleRate;
-  internalSamplesPerBeat = sampleRateHz * (60.0 / juce::jmax(30.0, juce::jmin(300.0, hostBpm.load())));
+  // Defensive: ensure valid sample rate
+  sampleRateHz = sampleRate > 0.0 ? sampleRate : 44100.0;
+
+  const double bpm = juce::jmax(30.0, juce::jmin(300.0, hostBpm.load()));
+  internalSamplesPerBeat = sampleRateHz * (60.0 / bpm);
   hostSamplesPerBeat = 0.0;
   hostLastSamplePos = 0.0;
   internalPhaseSamples = 0.0;

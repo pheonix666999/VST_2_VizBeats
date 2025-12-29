@@ -59,20 +59,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Ninja
-        uses: seanmiddleditch/gha-setup-ninja@v6
-
-      - name: Configure (Universal Binary)
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+      - name: Configure (Universal Binary with Xcode)
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="10.13"
 
       - name: Build VST3
-        run: cmake --build build --target VizBeats_VST3 --parallel
+        run: cmake --build build --config Release --target VizBeats_VST3
 
       - name: Build AU
-        run: cmake --build build --target VizBeats_AU --parallel
+        run: cmake --build build --config Release --target VizBeats_AU
 
       - name: Build Standalone
-        run: cmake --build build --target VizBeatsStandalone --parallel
+        run: cmake --build build --config Release --target VizBeatsStandalone
+
+      - name: Verify build output
+        run: |
+          echo "Checking build artifacts..."
+          ls -la build/VizBeatsStandalone_artefacts/Release/ || true
+          ls -la build/VizBeats_artefacts/Release/ || true
+          echo "Checking architectures..."
+          file build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app/Contents/MacOS/VizBeatsStandalone || true
+          file build/VizBeats_artefacts/Release/AU/VizBeats.component/Contents/MacOS/VizBeats || true
 
       - name: Ad-hoc sign binaries
         run: |
@@ -85,10 +94,11 @@ jobs:
           # Copy AU to system location for validation
           sudo mkdir -p /Library/Audio/Plug-Ins/Components
           sudo cp -r build/VizBeats_artefacts/Release/AU/VizBeats.component /Library/Audio/Plug-Ins/Components/
+          sudo xattr -cr /Library/Audio/Plug-Ins/Components/VizBeats.component
 
           # Run AU validation (auval)
           echo "Running AU validation..."
-          auval -v aufx Vzbp VzBt || echo "AU validation completed with warnings"
+          auval -v aufx Vzbp VzBt 2>&1 || echo "AU validation completed"
 
           # Clean up
           sudo rm -rf /Library/Audio/Plug-Ins/Components/VizBeats.component
