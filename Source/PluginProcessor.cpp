@@ -218,12 +218,19 @@ void VizBeatsAudioProcessor::updateHostInfo()
     {
       isPlaying = position->getIsPlaying();
 
+      // Get BPM from host
       if (auto optBpm = position->getBpm())
       {
-        bpm = *optBpm;
-        hasBpm = std::isfinite(bpm) && bpm > 0.0;
+        const double hostBpmValue = *optBpm;
+        // Accept any reasonable BPM value
+        if (std::isfinite(hostBpmValue) && hostBpmValue >= 1.0 && hostBpmValue <= 999.0)
+        {
+          bpm = hostBpmValue;
+          hasBpm = true;
+        }
       }
 
+      // Get PPQ position
       if (auto optPpq = position->getPpqPosition())
       {
         ppqPosition = *optPpq;
@@ -252,7 +259,39 @@ VizBeatsAudioProcessor::HostInfo VizBeatsAudioProcessor::getHostInfo() const noe
 
 void VizBeatsAudioProcessor::refreshHostInfo()
 {
-  updateHostInfo();
+  // Try to update from playhead - this may work from message thread in some hosts
+  if (auto* playHead = getPlayHead())
+  {
+    if (auto position = playHead->getPosition())
+    {
+      const bool isPlaying = position->getIsPlaying();
+
+      // Update playing state
+      hostIsPlaying.store(isPlaying, std::memory_order_relaxed);
+
+      // Get BPM if available
+      if (auto optBpm = position->getBpm())
+      {
+        const double bpmVal = *optBpm;
+        if (std::isfinite(bpmVal) && bpmVal >= 1.0 && bpmVal <= 999.0)
+        {
+          hostBpm.store(bpmVal, std::memory_order_relaxed);
+          hostHasBpm.store(true, std::memory_order_relaxed);
+        }
+      }
+
+      // Get PPQ position
+      if (auto optPpq = position->getPpqPosition())
+      {
+        const double ppq = *optPpq;
+        if (std::isfinite(ppq))
+        {
+          hostPpqPosition.store(ppq, std::memory_order_relaxed);
+          hostHasPpqPosition.store(true, std::memory_order_relaxed);
+        }
+      }
+    }
+  }
 }
 
 void VizBeatsAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)

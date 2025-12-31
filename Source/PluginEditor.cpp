@@ -1348,16 +1348,22 @@ void VizBeatsAudioProcessorEditor::timerCallback()
     repaint(); // Repaint the entire editor
   }
 
-  if (internalPlay && !lastInternalPlayState)
+  // Track when internal play or host play starts for timing fallback
+  if ((internalPlay && !lastInternalPlayState) || (hostInfo.isPlaying && !lastHostPlayingState))
     internalStartTimeSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
 
   lastInternalPlayState = internalPlay;
+  lastHostPlayingState = hostInfo.isPlaying;
 
   const auto hostPlaying = hostInfo.isPlaying;
+
+  // Always prefer host BPM when available, regardless of host playing state
+  // This shows the project tempo even when stopped
   const auto effectiveBpm = hostInfo.hasBpm ? hostInfo.bpm : manualBpm;
 
+  // When host is playing, override internal play state for display
   transportBar->setHostPlaying(hostPlaying);
-  transportBar->setPlayState(internalPlay);
+  transportBar->setPlayState(hostPlaying || internalPlay);
   transportBar->setBpm(effectiveBpm);
   transportBar->setColors(activeTheme);
   if (settingsPanel != nullptr)
@@ -1366,19 +1372,35 @@ void VizBeatsAudioProcessorEditor::timerCallback()
   bool isRunning = false;
   double beatPhase = 0.0;
 
-  if (hostPlaying && hostInfo.hasPpqPosition)
+  // Host transport takes priority - when DAW is playing, sync to it
+  if (hostPlaying)
   {
     isRunning = true;
-    const auto ppq = hostInfo.ppqPosition;
-    beatPhase = ppq - std::floor(ppq);
-    if (beatPhase < 0.0)
-      beatPhase += 1.0;
 
-    // Calculate current beat in bar from PPQ
-    currentBeatInBar = static_cast<int>(std::fmod(ppq, static_cast<double>(beatsPerBar)));
+    if (hostInfo.hasPpqPosition)
+    {
+      const auto ppq = hostInfo.ppqPosition;
+      beatPhase = ppq - std::floor(ppq);
+      if (beatPhase < 0.0)
+        beatPhase += 1.0;
+
+      // Calculate current beat in bar from PPQ
+      currentBeatInBar = static_cast<int>(std::fmod(ppq, static_cast<double>(beatsPerBar)));
+    }
+    else
+    {
+      // Host playing but no PPQ - use time-based fallback with host BPM
+      const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
+      const auto elapsedSeconds = juce::jmax(0.0, nowSeconds - internalStartTimeSeconds);
+      const auto useBpm = hostInfo.hasBpm ? hostInfo.bpm : effectiveBpm;
+      const auto beats = elapsedSeconds * (useBpm / 60.0);
+      beatPhase = beats - std::floor(beats);
+      currentBeatInBar = static_cast<int>(std::fmod(beats, static_cast<double>(beatsPerBar)));
+    }
   }
   else if (internalPlay)
   {
+    // Only use internal play when host is NOT playing
     isRunning = true;
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto elapsedSeconds = juce::jmax(0.0, nowSeconds - internalStartTimeSeconds);

@@ -32,6 +32,7 @@ private:
 
   bool settingsVisible = false;
   bool lastInternalPlayState = false;
+  bool lastHostPlayingState = false;
   double internalStartTimeSeconds = 0.0;
   float lastBeatPhaseUi = 0.0f;
   bool lastUiRunning = false;
