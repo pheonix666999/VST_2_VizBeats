@@ -97,6 +97,8 @@ private:
   double internalSamplesPerBeat = 44100.0;
   double hostSamplesPerBeat = 0.0;
   double hostLastSamplePos = 0.0;
+  bool hostFallbackRunning = false;
+  double hostFallbackPhaseSamples = 0.0;
 
 	  double lastBeatPhase = 0.0;
 	  bool lastBeatPhaseValid = false;

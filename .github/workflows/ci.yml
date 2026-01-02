@@ -82,6 +82,9 @@ jobs:
           echo "Checking architectures..."
           file build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app/Contents/MacOS/VizBeatsStandalone || true
           file build/VizBeats_artefacts/Release/AU/VizBeats.component/Contents/MacOS/VizBeats || true
+          lipo -info build/VizBeatsStandalone_artefacts/Release/VizBeatsStandalone.app/Contents/MacOS/VizBeatsStandalone || true
+          lipo -info build/VizBeats_artefacts/Release/VST3/VizBeats.vst3/Contents/MacOS/VizBeats || true
+          lipo -info build/VizBeats_artefacts/Release/AU/VizBeats.component/Contents/MacOS/VizBeats || true
 
       - name: Ad-hoc sign binaries
         run: |
@@ -176,6 +179,15 @@ jobs:
                    --version 1.0.0 \
                    --install-location / \
                    artifacts/VizBeats-macOS-AU.pkg
+
+      - name: Verify PKG payloads
+        run: |
+          echo "Standalone PKG contents:"
+          pkgutil --payload-files artifacts/VizBeats-macOS-Standalone.pkg | head -n 200
+          echo "VST3 PKG contents:"
+          pkgutil --payload-files artifacts/VizBeats-macOS-VST3.pkg | head -n 200
+          echo "AU PKG contents:"
+          pkgutil --payload-files artifacts/VizBeats-macOS-AU.pkg | head -n 200
 
       - name: Upload macOS Standalone PKG
         uses: actions/upload-artifact@v4

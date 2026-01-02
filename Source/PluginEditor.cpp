@@ -1404,7 +1404,8 @@ void VizBeatsAudioProcessorEditor::timerCallback()
     isRunning = true;
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto elapsedSeconds = juce::jmax(0.0, nowSeconds - internalStartTimeSeconds);
-    const auto beats = elapsedSeconds * (manualBpm / 60.0);
+    // Use project BPM if the host provides it even while stopped; fall back to manual BPM.
+    const auto beats = elapsedSeconds * (effectiveBpm / 60.0);
     beatPhase = beats - std::floor(beats);
 
     // Calculate current beat in bar

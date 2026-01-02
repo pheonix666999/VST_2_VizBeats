@@ -421,36 +421,87 @@ bool VizBeatsAudioProcessor::computeBeatPhase(double& outPhase, bool& outRunning
   const auto info = getHostInfo();
   const auto bpm = info.hasBpm ? info.bpm : manualBpm;
 
-  if (info.isPlaying && info.hasPpqPosition)
+  if (info.isPlaying)
   {
     outRunning = true;
-    auto phase = info.ppqPosition - std::floor(info.ppqPosition);
-    if (phase < 0.0)
-      phase += 1.0;
-    outPhase = phase;
-    return true;
-  }
 
-  if (info.isPlaying && info.hasBpm)
-  {
-    // Fallback: use sample position if PPQ is missing
-    if (auto* playHead = getPlayHead())
+    // Preferred: host PPQ position (phase locked to musical beats).
+    if (info.hasPpqPosition)
     {
-      if (auto position = playHead->getPosition())
+      auto phase = info.ppqPosition - std::floor(info.ppqPosition);
+      if (phase < 0.0)
+        phase += 1.0;
+      outPhase = phase;
+      hostFallbackRunning = false;
+      hostFallbackPhaseSamples = 0.0;
+      return true;
+    }
+
+    // Fallback: host time (seconds/samples) + BPM.
+    // Some hosts don't provide PPQ but do provide time; some provide BPM only.
+    const auto bpmForPhase = juce::jlimit(30.0, 300.0, bpm);
+    const auto secondsPerBeat = bpmForPhase > 0.0 ? (60.0 / bpmForPhase) : 0.0;
+
+    if (secondsPerBeat > 0.0)
+    {
+      if (auto* playHead = getPlayHead())
       {
-        if (auto timeSamples = position->getTimeInSamples())
+        if (auto position = playHead->getPosition())
         {
-          hostSamplesPerBeat = sampleRateHz * (60.0 / juce::jlimit(30.0, 300.0, bpm));
-          const auto samples = static_cast<double>(*timeSamples);
-          const auto wrapped = hostSamplesPerBeat > 0.0 ? std::fmod(samples, hostSamplesPerBeat) : 0.0;
-          outPhase = hostSamplesPerBeat > 0.0 ? wrapped / hostSamplesPerBeat : 0.0;
-          outRunning = true;
-          hostLastSamplePos = samples;
-          return true;
+          if (auto timeSeconds = position->getTimeInSeconds())
+          {
+            const auto t = *timeSeconds;
+            if (std::isfinite(t))
+            {
+              auto wrapped = std::fmod(t, secondsPerBeat);
+              if (wrapped < 0.0)
+                wrapped += secondsPerBeat;
+              outPhase = wrapped / secondsPerBeat;
+              hostFallbackRunning = false;
+              hostFallbackPhaseSamples = 0.0;
+              return true;
+            }
+          }
+
+          if (auto timeSamples = position->getTimeInSamples())
+          {
+            const auto samples = static_cast<double>(*timeSamples);
+            if (std::isfinite(samples) && sampleRateHz > 0.0)
+            {
+              const auto t = samples / sampleRateHz;
+              auto wrapped = std::fmod(t, secondsPerBeat);
+              if (wrapped < 0.0)
+                wrapped += secondsPerBeat;
+              outPhase = wrapped / secondsPerBeat;
+              hostLastSamplePos = samples;
+              hostFallbackRunning = false;
+              hostFallbackPhaseSamples = 0.0;
+              return true;
+            }
+          }
         }
       }
     }
+
+    // Last resort: advance an internal phase when host is playing but provides neither PPQ nor time.
+    // This at least makes the plugin run and click in time (using available BPM or manual BPM).
+    if (!hostFallbackRunning)
+    {
+      hostFallbackRunning = true;
+      hostFallbackPhaseSamples = 0.0;
+    }
+
+    hostSamplesPerBeat = sampleRateHz * (60.0 / bpmForPhase);
+    const auto phaseSamples = hostFallbackPhaseSamples;
+    hostFallbackPhaseSamples += static_cast<double>(numSamples);
+
+    const auto wrapped = hostSamplesPerBeat > 0.0 ? std::fmod(phaseSamples, hostSamplesPerBeat) : 0.0;
+    outPhase = hostSamplesPerBeat > 0.0 ? wrapped / hostSamplesPerBeat : 0.0;
+    return true;
   }
+
+  hostFallbackRunning = false;
+  hostFallbackPhaseSamples = 0.0;
 
   if (internalPlay)
   {
