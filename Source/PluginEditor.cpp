@@ -850,16 +850,12 @@ public:
   explicit SettingsPanel(VizBeatsAudioProcessor& p)
       : processor(p)
   {
-    // Visual Mode buttons
-    for (int i = 0; i < 6; ++i)
-    {
-      const char* labels[] = { "Pulse", "Traffic", "Pendulum", "Bounce", "Ladder", "Pattern" };
-      auto btn = std::make_unique<OptionButton>(labels[i]);
-      btn->setRadioGroupId(1);
-      btn->onClick = [this, i] { setVisualMode(i); };
-      addAndMakeVisible(*btn);
-      visualModeButtons.push_back(std::move(btn));
-    }
+    // Visual Mode: only Traffic is enabled (other modes were causing host crashes).
+    auto trafficBtn = std::make_unique<OptionButton>("Traffic");
+    trafficBtn->setRadioGroupId(1);
+    trafficBtn->onClick = [this] { setTrafficMode(); };
+    addAndMakeVisible(*trafficBtn);
+    visualModeButtons.push_back(std::move(trafficBtn));
 
     // Color theme buttons
     const juce::Colour themeIndicators[] = {
@@ -942,14 +938,13 @@ public:
 
   void refreshFromProcessor()
   {
-    const auto visualMode = static_cast<int>(processor.getVisualMode());
     const auto colorTheme = static_cast<int>(processor.getColorTheme());
     const auto beatsPerBar = processor.getBeatsPerBar();
     const auto subdivisions = processor.getSubdivisions();
     const auto volume = processor.getSoundVolume();
 
-    for (size_t i = 0; i < visualModeButtons.size(); ++i)
-      visualModeButtons[i]->setToggleState(static_cast<int>(i) == visualMode, juce::dontSendNotification);
+    if (!visualModeButtons.empty())
+      visualModeButtons.front()->setToggleState(true, juce::dontSendNotification);
 
     for (size_t i = 0; i < colorThemeButtons.size(); ++i)
       colorThemeButtons[i]->setToggleState(static_cast<int>(i) == colorTheme, juce::dontSendNotification);
@@ -986,7 +981,7 @@ public:
     g.drawText("Visual Mode", 20, 60, 200, 20, juce::Justification::centredLeft);
     g.drawText("Color Theme", 20, 160, 200, 20, juce::Justification::centredLeft);
     g.drawText("Beats Per Bar", 20, 260, 200, 20, juce::Justification::centredLeft);
-    g.drawText("Subdivisions (Pattern Mode)", 20, 320, 250, 20, juce::Justification::centredLeft);
+    g.drawText("Subdivisions", 20, 320, 250, 20, juce::Justification::centredLeft);
     g.drawText("Sound Volume", 20, 400, 200, 20, juce::Justification::centredLeft);
   }
 
@@ -997,16 +992,12 @@ public:
     // Close button
     closeButton.setBounds(bounds.getWidth() - 40, 20, 60, 30);
 
-    // Visual Mode buttons (2 rows of 3)
+    // Visual Mode button (Traffic only)
     auto visualModeArea = juce::Rectangle<int>(20, 85, bounds.getWidth() - 20, 60);
-    const int btnWidth = (visualModeArea.getWidth() - 20) / 3;
     const int btnHeight = 32;
 
-    for (int i = 0; i < 3; ++i)
-      visualModeButtons[static_cast<size_t>(i)]->setBounds(visualModeArea.getX() + i * (btnWidth + 10), visualModeArea.getY(), btnWidth, btnHeight);
-
-    for (int i = 3; i < 6; ++i)
-      visualModeButtons[static_cast<size_t>(i)]->setBounds(visualModeArea.getX() + (i - 3) * (btnWidth + 10), visualModeArea.getY() + btnHeight + 5, btnWidth, btnHeight);
+    if (!visualModeButtons.empty())
+      visualModeButtons.front()->setBounds(visualModeArea.getX(), visualModeArea.getY(), juce::jmin(220, visualModeArea.getWidth()), btnHeight);
 
     // Color Theme buttons (2 rows of 2)
     auto colorThemeArea = juce::Rectangle<int>(20, 185, bounds.getWidth() - 20, 60);
@@ -1032,10 +1023,10 @@ public:
   }
 
 private:
-  void setVisualMode(int mode)
+  void setTrafficMode()
   {
     if (auto* param = processor.apvts.getParameter(kVisualModeParamId))
-      param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(mode)));
+      param->setValueNotifyingHost(param->convertTo0to1(1.0f));
   }
 
   void setColorTheme(int theme)
@@ -1276,9 +1267,10 @@ VizBeatsAudioProcessorEditor::~VizBeatsAudioProcessorEditor()
 
 void VizBeatsAudioProcessorEditor::updateVisualizerVisibility()
 {
-  const auto mode = processor.getVisualMode();
-  pulseVisualizer->setVisible(mode == VisualMode::Pulse);
-  trafficVisualizer->setVisible(mode == VisualMode::Traffic);
+  if (pulseVisualizer != nullptr)
+    pulseVisualizer->setVisible(false);
+  if (trafficVisualizer != nullptr)
+    trafficVisualizer->setVisible(true);
 }
 
 void VizBeatsAudioProcessorEditor::paint(juce::Graphics& g)
@@ -1331,8 +1323,6 @@ void VizBeatsAudioProcessorEditor::resized()
 
 void VizBeatsAudioProcessorEditor::timerCallback()
 {
-  processor.refreshHostInfo();
-
   const auto hostInfo = processor.getHostInfo();
   const auto manualBpm = static_cast<double>(processor.apvts.getRawParameterValue(kManualBpmParamId)->load());
   const auto internalPlay = processor.apvts.getRawParameterValue(kInternalPlayParamId)->load() > 0.5f;

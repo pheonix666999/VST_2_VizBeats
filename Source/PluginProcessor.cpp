@@ -79,37 +79,45 @@ juce::AudioProcessorValueTreeState::ParameterLayout VizBeatsAudioProcessor::crea
 VisualMode VizBeatsAudioProcessor::getVisualMode() const
 {
   auto* param = apvts.getRawParameterValue(kVisualModeParamId);
-  return static_cast<VisualMode>(static_cast<int>(param->load()));
+  juce::ignoreUnused(param);
+  // Only Traffic is supported/stable for production right now.
+  // Clamp to Traffic even if the stored state/automation requests another mode.
+  return VisualMode::Traffic;
 }
 
 ColorTheme VizBeatsAudioProcessor::getColorTheme() const
 {
   auto* param = apvts.getRawParameterValue(kColorThemeParamId);
-  return static_cast<ColorTheme>(static_cast<int>(param->load()));
+  const auto v = param != nullptr ? static_cast<int>(param->load()) : 0;
+  return static_cast<ColorTheme>(juce::jlimit(0, 3, v));
 }
 
 int VizBeatsAudioProcessor::getBeatsPerBar() const
 {
   auto* param = apvts.getRawParameterValue(kBeatsPerBarParamId);
-  return static_cast<int>(param->load());
+  const auto v = param != nullptr ? static_cast<int>(param->load()) : 4;
+  return juce::jlimit(1, 16, v);
 }
 
 int VizBeatsAudioProcessor::getSubdivisions() const
 {
   auto* param = apvts.getRawParameterValue(kSubdivisionsParamId);
-  return static_cast<int>(param->load());
+  const auto v = param != nullptr ? static_cast<int>(param->load()) : 1;
+  return juce::jlimit(1, 4, v);
 }
 
 float VizBeatsAudioProcessor::getSoundVolume() const
 {
   auto* param = apvts.getRawParameterValue(kSoundVolumeParamId);
-  return param->load();
+  const auto v = param != nullptr ? param->load() : 0.5f;
+  return juce::jlimit(0.0f, 1.0f, v);
 }
 
 bool VizBeatsAudioProcessor::getPreviewSubdivisions() const
 {
   auto* param = apvts.getRawParameterValue(kPreviewSubdivisionsParamId);
-  return param->load() > 0.5f;
+  const auto v = param != nullptr ? param->load() : 0.0f;
+  return v > 0.5f;
 }
 
 const juce::String VizBeatsAudioProcessor::getName() const

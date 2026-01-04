@@ -13,6 +13,7 @@
 
 ## Sync verification steps (in the DAW)
 1. Insert **VizBeats** on an audio track (or instrument/effect slot depending on DAW).
+   - Logic Pro (AU): if you see a warning like “Audio Unit plug-in reported a problem…”, it means the plugin crashed; send the Logic crash report + Console logs.
 2. Set the DAW project tempo to a clear value (e.g. 90 BPM), then start playback:
    - The visual should animate in time.
    - If “Sound Volume” is > 0, you should hear a click on beats.
@@ -31,4 +32,3 @@ Ask for these details (they directly affect what the host reports to the plugin)
 - macOS version + CPU (Intel/Apple Silicon)
 - Does the BPM readout in the plugin show the project tempo correctly?
 - Does anything move when the DAW transport is running?
-
