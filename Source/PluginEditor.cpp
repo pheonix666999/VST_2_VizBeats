@@ -1228,6 +1228,10 @@ VizBeatsAudioProcessorEditor::VizBeatsAudioProcessorEditor(VizBeatsAudioProcesso
 {
   setOpaque(true);
 
+  // Allow host-resizable plugin UI (hosts may impose their own limits).
+  setResizable(true, true);
+  setResizeLimits(520, 320, 1920, 1080);
+
   pulseVisualizer = std::make_unique<PulseVisualizer>();
   trafficVisualizer = std::make_unique<TrafficVisualizer>();
   transportBar = std::make_unique<TransportBar>(processor);
@@ -1314,7 +1318,7 @@ void VizBeatsAudioProcessorEditor::resized()
   if (settingsPanel != nullptr)
   {
     const auto panelWidth = juce::jmin(450, bounds.getWidth() - 40);
-    const auto panelHeight = 480;
+    const auto panelHeight = juce::jmin(480, bounds.getHeight() - 40);
     const auto panelX = (bounds.getWidth() - panelWidth) / 2;
     const auto panelY = (bounds.getHeight() - panelHeight) / 2;
     settingsPanel->setBounds(panelX, panelY, panelWidth, panelHeight);
